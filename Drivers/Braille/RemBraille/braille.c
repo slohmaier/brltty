@@ -30,10 +30,10 @@
 #include "brlapi.h"
 
 typedef enum {
-  PARM_HOST=0,
-  PARM_AUTH=1
+  PARM_ADDRESS=0,
+  PARM_PORT=1
 } DriverParameter;
-#define BRLPARMS "host", "auth"
+#define BRLPARMS "address", "port"
 
 #include "brl_driver.h"
 
