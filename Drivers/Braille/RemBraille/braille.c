@@ -37,83 +37,45 @@ typedef enum {
 
 #include "brl_driver.h"
 
-#define CHECK(cond, label) \
-  do { \
-    if (!(cond)) { \
-      logMessage(LOG_ERR, "%s", brlapi_strerror(&brlapi_error)); \
-      goto label; \
-    } \
-  } while (0);
+/* \FROM BRLAPI\ */
 
-static brlapi_param_clientPriority_t currentPriority;
-static const brlapi_param_clientPriority_t qualityPriorities[] = {
-  [SCQ_NONE] = BRLAPI_PARAM_CLIENT_PRIORITY_DISABLE,
-  [SCQ_LOW]  = BRLAPI_PARAM_CLIENT_PRIORITY_DEFAULT - 40,
-  [SCQ_POOR] = BRLAPI_PARAM_CLIENT_PRIORITY_DEFAULT - 25,
-  [SCQ_FAIR] = BRLAPI_PARAM_CLIENT_PRIORITY_DEFAULT - 10,
-  [SCQ_GOOD] = BRLAPI_PARAM_CLIENT_PRIORITY_DEFAULT + 10,
-  [SCQ_HIGH] = BRLAPI_PARAM_CLIENT_PRIORITY_DEFAULT + 30,
-};
-
+//from brlAPI driver
 static int displaySize;
 static unsigned char *prevData;
 static wchar_t *prevText;
 static int prevCursor;
 static int prevShown;
-
 static int restart;
+/* /FROM BRLAPI/ */
+
+static char *host;
+static int port;
 
 /* Function : brl_construct */
 /* Opens a connection with BrlAPI's server */
 static int brl_construct(BrailleDisplay *brl, char **parameters, const char *device)
 {
-  currentPriority = BRLAPI_PARAM_CLIENT_PRIORITY_DEFAULT;
+  
+  host = parameters[PARM_ADDRESS];
+  port = atoi(parameters[PARM_PORT]);
+  if (port == NULL) {
+    logMessage(LOG_CATEGORY(BRAILLE_DRIVER),
+               "Invalid Port '%s'!", parameters[PARM_PORT]);
+  }
 
-  brlapi_connectionSettings_t settings;
-  settings.host = parameters[PARM_HOST];
-  settings.auth = parameters[PARM_AUTH];
-
-  CHECK((brlapi_openConnection(&settings, &settings)>=0), out);
-  logMessage(LOG_CATEGORY(BRAILLE_DRIVER),
-             "Connected to %s using %s", settings.host, settings.auth);
-
-  CHECK((brlapi_enterTtyModeWithPath(NULL, 0, NULL)>=0), out0);
-  logMessage(LOG_CATEGORY(BRAILLE_DRIVER),
-             "Got tty successfully");
-
-  CHECK((brlapi_getDisplaySize(&brl->textColumns, &brl->textRows)==0), out1);
-  logMessage(LOG_CATEGORY(BRAILLE_DRIVER),
-             "Found out display size: %dx%d", brl->textColumns, brl->textRows);
-  displaySize = brl->textColumns * brl->textRows;
-
-  brl->hideCursor = 1;
+  
 
   prevData = malloc(displaySize);
-  CHECK((prevData!=NULL), out1);
   memset(prevData, 0, displaySize);
 
   prevText = malloc(displaySize * sizeof(wchar_t));
-  CHECK((prevText!=NULL), out2);
   wmemset(prevText, WC_C(' '), displaySize);
 
   prevShown = 0;
   prevCursor = BRL_NO_CURSOR;
   restart = 0;
 
-  logMessage(LOG_CATEGORY(BRAILLE_DRIVER),
-             "Memory allocated, returning 1");
-  return 1;
-  
-out2:
-  free(prevData);
-out1:
-  brlapi_leaveTtyMode();
-out0:
-  brlapi_closeConnection();
-out:
-  logMessage(LOG_CATEGORY(BRAILLE_DRIVER),
-             "Something went wrong, returning 0");
-  return 0;
+  return 1; //TODO 0 on error
 }
 
 /* Function : brl_destruct */
@@ -122,26 +84,6 @@ static void brl_destruct(BrailleDisplay *brl)
 {
   free(prevData);
   free(prevText);
-  brlapi_closeConnection();
-}
-
-static int
-setClientPriority (BrailleDisplay *brl) {
-  unsigned char worst = ARRAY_COUNT(qualityPriorities) - 1;
-  unsigned char quality = MIN(brl->quality, worst);
-  brlapi_param_clientPriority_t priority = qualityPriorities[quality];
-
-  if (priority != currentPriority) {
-    int result = brlapi_setParameter(
-      BRLAPI_PARAM_CLIENT_PRIORITY, 0,
-      BRLAPI_PARAMF_LOCAL, &priority, sizeof(priority)
-    );
-
-    if (result < 0) return 0;
-    currentPriority = priority;
-  }
-
-  return 1;
 }
 
 /* function : brl_writeWindow */
