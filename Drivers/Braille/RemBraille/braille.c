@@ -26,6 +26,15 @@
 #include "cmd_brlapi.h"
 #include "charset.h"
 
+//includes for socket
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <unistd.h>
+
 #define BRLAPI_NO_DEPRECATED
 #include "brlapi.h"
 
@@ -50,6 +59,32 @@ static int restart;
 
 static char *host;
 static int port;
+static int socketfd = -1;
+
+//constantly read from socket
+static void thread_readsocket(void)
+{
+  char buffer[1024];
+  int n;
+  while (1) {
+    n = read(socketfd, buffer, 1024);
+    if (n < 0) {
+      logMessage(LOG_ERR, "read: %s", strerror(errno));
+      close(socketfd);
+      socketfd = -1;
+      sleep(5);
+    } else {
+      logMessage(LOG_DEBUG, "read: %s", buffer);
+    }
+  }
+}
+
+
+// constantly try opening the socket, if it's closed with a delay.
+// the delay is incrementing up to 5 seconds
+// if the socket is open, the delay is reset to 0
+//
+static void thread_socket
 
 /* Function : brl_construct */
 /* Opens a connection with BrlAPI's server */
