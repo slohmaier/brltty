@@ -39,8 +39,8 @@
 #include "brlapi.h"
 
 typedef enum {
-  PARM_ADDRESS=0,
-  PARM_PORT=1
+    PARM_ADDRESS=0,
+    PARM_PORT=1
 } DriverParameter;
 #define BRLPARMS "address", "port"
 
@@ -64,19 +64,19 @@ static int socketfd = -1;
 //constantly read from socket
 static void thread_readsocket(void)
 {
-  char buffer[1024];
-  int n;
-  while (1) {
-    n = read(socketfd, buffer, 1024);
-    if (n < 0) {
-      logMessage(LOG_ERR, "read: %s", strerror(errno));
-      close(socketfd);
-      socketfd = -1;
-      sleep(5);
-    } else {
-      logMessage(LOG_DEBUG, "read: %s", buffer);
+    char buffer[1024];
+    int n;
+    while (1) {
+        n = read(socketfd, buffer, 1024);
+        if (n < 0) {
+            logMessage(LOG_ERR, "read: %s", strerror(errno));
+            close(socketfd);
+            socketfd = -1;
+            sleep(5);
+        } else {
+            logMessage(LOG_DEBUG, "read: %s", buffer);
+        }
     }
-  }
 }
 
 
@@ -90,35 +90,35 @@ static void thread_socket
 /* Opens a connection with BrlAPI's server */
 static int brl_construct(BrailleDisplay *brl, char **parameters, const char *device)
 {
-  
-  host = parameters[PARM_ADDRESS];
-  port = atoi(parameters[PARM_PORT]);
-  if (port == NULL) {
-    logMessage(LOG_CATEGORY(BRAILLE_DRIVER),
-               "Invalid Port '%s'!", parameters[PARM_PORT]);
-  }
+    
+    host = parameters[PARM_ADDRESS];
+    port = atoi(parameters[PARM_PORT]);
+    if (port == NULL) {
+        logMessage(LOG_CATEGORY(BRAILLE_DRIVER),
+                             "Invalid Port '%s'!", parameters[PARM_PORT]);
+    }
 
-  
+    
 
-  prevData = malloc(displaySize);
-  memset(prevData, 0, displaySize);
+    prevData = malloc(displaySize);
+    memset(prevData, 0, displaySize);
 
-  prevText = malloc(displaySize * sizeof(wchar_t));
-  wmemset(prevText, WC_C(' '), displaySize);
+    prevText = malloc(displaySize * sizeof(wchar_t));
+    wmemset(prevText, WC_C(' '), displaySize);
 
-  prevShown = 0;
-  prevCursor = BRL_NO_CURSOR;
-  restart = 0;
+    prevShown = 0;
+    prevCursor = BRL_NO_CURSOR;
+    restart = 0;
 
-  return 1; //TODO 0 on error
+    return 1; //TODO 0 on error
 }
 
 /* Function : brl_destruct */
 /* Frees memory and closes the connection with BrlAPI */
 static void brl_destruct(BrailleDisplay *brl)
 {
-  free(prevData);
-  free(prevText);
+    free(prevData);
+    free(prevText);
 }
 
 /* function : brl_writeWindow */
@@ -126,66 +126,66 @@ static void brl_destruct(BrailleDisplay *brl)
 /* the one already displayed */
 static int brl_writeWindow(BrailleDisplay *brl, const wchar_t *text)
 {
-  setClientPriority(brl);
+    setClientPriority(brl);
 
-  brlapi_writeArguments_t arguments = BRLAPI_WRITEARGUMENTS_INITIALIZER;
-  int vt = currentVirtualTerminal();
+    brlapi_writeArguments_t arguments = BRLAPI_WRITEARGUMENTS_INITIALIZER;
+    int vt = currentVirtualTerminal();
 
-  if (vt == SCR_NO_VT) {
-    /* should leave display */
-    if (prevShown) {
-      brlapi_write(&arguments);
-      prevShown = 0;
-    }
-  } else {
-    if (prevShown &&
-        (memcmp(prevData,brl->buffer,displaySize) == 0) &&
-        (!text || (wmemcmp(prevText,text,displaySize) == 0)) &&
-        (brl->cursor == prevCursor)) {
-      return 1;
-    }
-
-    unsigned char and[displaySize];
-    memset(and, 0, sizeof(and));
-    arguments.andMask = and;
-    arguments.orMask = brl->buffer;
-
-    if (text) {
-      arguments.text = (char*) text;
-      arguments.textSize = displaySize * sizeof(wchar_t);
-      arguments.charset = (char*) getWcharCharset();
-    }
-
-    arguments.regionBegin = 1;
-    arguments.regionSize = displaySize;
-    arguments.cursor = (brl->cursor != BRL_NO_CURSOR)? (brl->cursor + 1): BRLAPI_CURSOR_OFF;
-
-    if (brlapi_write(&arguments)==0) {
-      memcpy(prevData,brl->buffer,displaySize);
-      if (text)
-	wmemcpy(prevText,text,displaySize);
-      else
-	wmemset(prevText,0,displaySize);
-      prevCursor = brl->cursor;
-      prevShown = 1;
+    if (vt == SCR_NO_VT) {
+        /* should leave display */
+        if (prevShown) {
+            brlapi_write(&arguments);
+            prevShown = 0;
+        }
     } else {
-      logMessage(LOG_ERR, "write: %s", brlapi_strerror(&brlapi_error));
-      restart = 1;
-    }
-  }
+        if (prevShown &&
+                (memcmp(prevData,brl->buffer,displaySize) == 0) &&
+                (!text || (wmemcmp(prevText,text,displaySize) == 0)) &&
+                (brl->cursor == prevCursor)) {
+            return 1;
+        }
 
-  return 1;
+        unsigned char and[displaySize];
+        memset(and, 0, sizeof(and));
+        arguments.andMask = and;
+        arguments.orMask = brl->buffer;
+
+        if (text) {
+            arguments.text = (char*) text;
+            arguments.textSize = displaySize * sizeof(wchar_t);
+            arguments.charset = (char*) getWcharCharset();
+        }
+
+        arguments.regionBegin = 1;
+        arguments.regionSize = displaySize;
+        arguments.cursor = (brl->cursor != BRL_NO_CURSOR)? (brl->cursor + 1): BRLAPI_CURSOR_OFF;
+
+        if (brlapi_write(&arguments)==0) {
+            memcpy(prevData,brl->buffer,displaySize);
+            if (text)
+    wmemcpy(prevText,text,displaySize);
+            else
+    wmemset(prevText,0,displaySize);
+            prevCursor = brl->cursor;
+            prevShown = 1;
+        } else {
+            logMessage(LOG_ERR, "write: %s", brlapi_strerror(&brlapi_error));
+            restart = 1;
+        }
+    }
+
+    return 1;
 }
 
 /* Function : brl_readCommand */
 /* Reads a command from the braille keyboard */
 static int brl_readCommand(BrailleDisplay *brl, KeyTableCommandContext context)
 {
-  brlapi_keyCode_t keycode;
-  if (restart) return BRL_CMD_RESTARTBRL;
-  switch (brlapi_readKey(0, &keycode)) {
-    case 0: return EOF;
-    case 1: return cmdBrlapiToBrltty(keycode);
-    default: return BRL_CMD_RESTARTBRL;
-  }
+    brlapi_keyCode_t keycode;
+    if (restart) return BRL_CMD_RESTARTBRL;
+    switch (brlapi_readKey(0, &keycode)) {
+        case 0: return EOF;
+        case 1: return cmdBrlapiToBrltty(keycode);
+        default: return BRL_CMD_RESTARTBRL;
+    }
 }
