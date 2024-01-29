@@ -57,17 +57,29 @@ static int prevShown;
 static int restart;
 /* /FROM BRLAPI/ */
 
-static char *host;
-static int port;
+/* \REMBRAILLE-COM\  */
+typedef enum {
+    RB_CMD_NONE,
+    RB_CMD_DISPSIZE,
+    RB_CMD_INVALUD
+} RemBrailleCommand;
+/* /REMBRAILLE-COM/  */
+
+//socket connection information
+static char *host = NULL;
+static int port = -1;
+//socket
 static int socketfd = -1;
 
 //constantly read from socket
 static void thread_readsocket(void)
 {
     char buffer[1024];
-    int n;
+    char *message;
+    uint16_t messageLength;
+    int n, bufferOffset = 0;
     while (1) {
-        n = read(socketfd, buffer, 1024);
+        n = read(socketfd, buffer+bufferOffset, 1024-bufferOffset);
         if (n < 0) {
             logMessage(LOG_ERR, "read: %s", strerror(errno));
             close(socketfd);
@@ -75,6 +87,54 @@ static void thread_readsocket(void)
             sleep(5);
         } else {
             logMessage(LOG_DEBUG, "read: %s", buffer);
+            //correct for remainder of previous message
+            n += bufferOffset;
+            bufferOffset = 0;
+            
+            while (n > 0) {
+                //find next message
+                for (message = buffer; *message != '\x1b' && message < buffer + 1024; message++);
+                //is message-header complete?
+                if (message - buffer < 3) {
+                    logMessage(LOG_ERR, "Invalid message received");
+                    memcpy(buffer, message, buffer - message);
+                    bufferOffset = buffer - message;
+                    continue;
+                }
+                messageLength = message[1] | (message[2] << 8);
+
+                if (messageLength > n - (message - buffer)) {
+                    logMessage(LOG_ERR, "Message too long");
+                    memcpy(buffer, message, buffer - message);
+                    bufferOffset = buffer - message;
+                    continue;
+                }
+
+                if (message[3] < RB_CMD_NONE || message[3] > RB_CMD_INVALUD) {
+                    logMessage(LOG_ERR, "Invalid command received");
+                    memcpy(buffer, message, buffer - message);
+                    bufferOffset = buffer - message;
+                    continue;
+                }
+
+                switch (message[3]) {
+                    case RB_CMD_DISPSIZE:
+                        displaySize = message[4] | (message[5] << 8);
+                        free(prevData);
+                        free(prevText);
+                        prevData = malloc(displaySize);
+                        prevText = malloc(displaySize * sizeof(wchar_t));
+                        break;
+                    default:
+                        logMessage(LOG_ERR, "Invalid command received");
+                        memcpy(buffer, message, buffer - message);
+                        bufferOffset = buffer - message;
+                        continue;
+                }
+
+                n -= messageLength - (message - buffer) - 3;
+                message += messageLength + 3;
+            }
         }
     }
 }
@@ -92,19 +152,14 @@ static int brl_construct(BrailleDisplay *brl, char **parameters, const char *dev
 {
     
     host = parameters[PARM_ADDRESS];
-    port = atoi(parameters[PARM_PORT]);
-    if (port == NULL) {
+    //try reading port as integer
+    port = atof(parameters[PARM_PORT]);
+    if (port < 1 || port > 65535) {
         logMessage(LOG_CATEGORY(BRAILLE_DRIVER),
                              "Invalid Port '%s'!", parameters[PARM_PORT]);
     }
 
     
-
-    prevData = malloc(displaySize);
-    memset(prevData, 0, displaySize);
-
-    prevText = malloc(displaySize * sizeof(wchar_t));
-    wmemset(prevText, WC_C(' '), displaySize);
 
     prevShown = 0;
     prevCursor = BRL_NO_CURSOR;
