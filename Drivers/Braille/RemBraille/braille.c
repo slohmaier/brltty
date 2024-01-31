@@ -34,6 +34,8 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <unistd.h>
+#include <errno.h>
+#include <pthread.h>
 
 #define BRLAPI_NO_DEPRECATED
 #include "brlapi.h"
@@ -70,6 +72,9 @@ static char *host = NULL;
 static int port = -1;
 //socket
 static int socketfd = -1;
+//threads
+pthread_t threadSocket = NULL;
+pthread_t threadReadSocket = NULL;
 
 //constantly read from socket
 static void thread_readsocket(void)
@@ -78,13 +83,12 @@ static void thread_readsocket(void)
     char *message;
     uint16_t messageLength;
     int n, bufferOffset = 0;
-    while (1) {
+    while (socketfd != -1) {
         n = read(socketfd, buffer+bufferOffset, 1024-bufferOffset);
         if (n < 0) {
             logMessage(LOG_ERR, "read: %s", strerror(errno));
             close(socketfd);
             socketfd = -1;
-            sleep(5);
         } else {
             logMessage(LOG_DEBUG, "read: %s", buffer);
             //correct for remainder of previous message
@@ -144,7 +148,47 @@ static void thread_readsocket(void)
 // the delay is incrementing up to 5 seconds
 // if the socket is open, the delay is reset to 0
 //
-static void thread_socket
+static void thread_socket(void *)
+{
+    while (1) {
+        while (socketfd == -1)
+        {
+            socketfd = socket(AF_INET, SOCK_STREAM, 0);
+            if (socketfd == -1)
+            {
+                logMessage(LOG_ERR, "socket: %s", strerror(errno));
+                sleep(5);
+            }
+            else
+            {
+                struct sockaddr_in server;
+                server.sin_addr.s_addr = inet_addr(host);
+                server.sin_family = AF_INET;
+                server.sin_port = htons(port);
+                if (connect(socketfd, (struct sockaddr *)&server, sizeof(server)) < 0)
+                {
+                    logMessage(LOG_ERR, "connect: %s", strerror(errno));
+                    close(socketfd);
+                    socketfd = -1;
+                    sleep(5);
+                }
+                else
+                {
+                    logMessage(LOG_DEBUG, "Connected to %s:%d", host, port);
+                    //start readsocket thread
+                    if (pthread_create(&threadReadSocket, NULL, &thread_readsocket, NULL) != 0)
+                    {
+                        logMessage(LOG_ERR, "pthread_create: %s", strerror(errno));
+                        close(socketfd);
+                        socketfd = -1;
+                        sleep(5);
+                    }
+                }
+            }
+        }
+        sleep(1);
+    }
+}
 
 /* Function : brl_construct */
 /* Opens a connection with BrlAPI's server */
@@ -159,7 +203,12 @@ static int brl_construct(BrailleDisplay *brl, char **parameters, const char *dev
                              "Invalid Port '%s'!", parameters[PARM_PORT]);
     }
 
-    
+    //start socket with pthreads
+    if (pthread_create(&threadSocket, NULL, &thread_socket, NULL) != 0)
+    {
+        logMessage(LOG_ERR, "pthread_create: %s", strerror(errno));
+        return 0;
+    }
 
     prevShown = 0;
     prevCursor = BRL_NO_CURSOR;
